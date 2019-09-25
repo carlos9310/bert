@@ -580,9 +580,11 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
   logits = tf.reshape(logits, [batch_size, seq_length, 2])
   logits = tf.transpose(logits, [2, 0, 1])
 
-  unstacked_logits = tf.unstack(logits, axis=0)
 
-  (start_logits, end_logits) = (unstacked_logits[0], unstacked_logits[1])
+  # 在每个批次中，一个文本段落内每个字/词作为开始或者结束标记的几率
+  unstacked_logits = tf.unstack(logits, axis=0) # [2,batch_size,seq_length]
+
+  (start_logits, end_logits) = (unstacked_logits[0], unstacked_logits[1]) # ([batch_size,seq_length],[batch_size,seq_length])
 
   return (start_logits, end_logits)
 
@@ -594,6 +596,8 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
   def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
     """The `model_fn` for TPUEstimator."""
+
+    global_step = tf.train.get_global_step()
 
     tf.logging.info("*** Features ***")
     for name in sorted(features.keys()):
@@ -636,13 +640,23 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
       init_string = ""
       if var.name in initialized_variable_names:
         init_string = ", *INIT_FROM_CKPT*"
+      else:
+        init_string = ", *INIT_FROM_GRAPH*"
       tf.logging.info("  name = %s, shape = %s%s", var.name, var.shape,
                       init_string)
 
     output_spec = None
+
+    tensors_log = {
+        'global_step': global_step,
+    }
+    training_hooks = tf.train.LoggingTensorHook(
+        tensors=tensors_log, every_n_iter=1)
+
     if mode == tf.estimator.ModeKeys.TRAIN:
       seq_length = modeling.get_shape_list(input_ids)[1]
 
+      # 交叉熵 https://medium.com/data-science-bootcamp/understand-cross-entropy-loss-in-minutes-9fb263caee9a
       def compute_loss(logits, positions):
         one_hot_positions = tf.one_hot(
             positions, depth=seq_length, dtype=tf.float32)
@@ -666,7 +680,8 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
           mode=mode,
           loss=total_loss,
           train_op=train_op,
-          scaffold_fn=scaffold_fn)
+          scaffold_fn=scaffold_fn,
+          training_hooks=[training_hooks])
     elif mode == tf.estimator.ModeKeys.PREDICT:
       predictions = {
           "unique_ids": unique_ids,
@@ -1201,8 +1216,8 @@ def main(_):
     train_writer.close()
 
     tf.logging.info("***** Running training *****")
-    tf.logging.info("  Num orig examples = %d", len(train_examples))
-    tf.logging.info("  Num split examples = %d", train_writer.num_features)
+    tf.logging.info("  Num orig examples = %d", len(train_examples)) # (q,p_c,a)
+    tf.logging.info("  Num split examples = %d", train_writer.num_features) # (q,p_c_span1,a) (q,p_c_span2,a) ...
     tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
     tf.logging.info("  Num steps = %d", num_train_steps)
     del train_examples
