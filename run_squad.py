@@ -305,7 +305,7 @@ def read_squad_examples(input_file, is_training):
 
 
   # logging 前20个examples
-  for i in range(20):
+  for i in range(200):
     tf.logging.info(f'start logging example+++{i}+++')
     tf.logging.info(examples[i])
     # tf.logging.info(examples[i].qas_id)
@@ -442,7 +442,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
         start_position = 0
         end_position = 0
 
-      if example_index < 20:
+      if example_index < 200:
         tf.logging.info("*** Example ***")
         tf.logging.info("unique_id: %s" % (unique_id))
         tf.logging.info("example_index: %s" % (example_index))
