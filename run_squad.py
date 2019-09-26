@@ -191,6 +191,7 @@ class SquadExample(object):
       s += ", end_position: %d" % (self.end_position)
     if self.start_position:
       s += ", is_impossible: %r" % (self.is_impossible)
+    s += ", orig_answer_text: %d" % (self.orig_answer_text)
     return s
 
 
