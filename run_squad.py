@@ -303,6 +303,20 @@ def read_squad_examples(input_file, is_training):
             is_impossible=is_impossible)
         examples.append(example)
 
+
+  # logging 前20个examples
+  for i in range(20):
+    tf.logging.info(f'start logging example+++{i}+++')
+    tf.logging.info(examples[i])
+    # tf.logging.info(examples[i].qas_id)
+    # tf.logging.info(examples[i].question_text)
+    # tf.logging.info(examples[i].doc_tokens)
+    # tf.logging.info(examples[i].orig_answer_text)
+    # tf.logging.info(examples[i].start_position)
+    # tf.logging.info(examples[i].end_position)
+    # tf.logging.info(examples[i].is_impossible)
+    tf.logging.info(f'end logging example+++{i}+++')
+
   return examples
 
 
@@ -363,6 +377,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
         break
       start_offset += min(length, doc_stride)
 
+    # 分割后的文档span作为模型的features，先将部分features属性写入到tfrecord文件中，训练时再从文件中加载
     for (doc_span_index, doc_span) in enumerate(doc_spans):
       tokens = []
       token_to_orig_map = {}
@@ -729,6 +744,7 @@ def input_fn_builder(input_file, seq_length, is_training, drop_remainder):
 
   def input_fn(params):
     """The actual input function."""
+    tf.logging.info(f'params:{params}')
     batch_size = params["batch_size"]
 
     # For training, we want a lot of parallel reading and shuffling.
@@ -1088,6 +1104,20 @@ class FeatureWriter(object):
           int64_list=tf.train.Int64List(value=list(values)))
       return feature
 
+    # feature = InputFeatures(
+    #     unique_id=unique_id, #
+    #     example_index=example_index,
+    #     doc_span_index=doc_span_index,
+    #     tokens=tokens,
+    #     token_to_orig_map=token_to_orig_map,
+    #     token_is_max_context=token_is_max_context,
+    #     input_ids=input_ids, #
+    #     input_mask=input_mask, #
+    #     segment_ids=segment_ids, #
+    #     start_position=start_position, ##
+    #     end_position=end_position, ##
+    #     is_impossible=example.is_impossible) ##
+
     features = collections.OrderedDict()
     features["unique_ids"] = create_int_feature([feature.unique_id])
     features["input_ids"] = create_int_feature(feature.input_ids)
@@ -1178,8 +1208,9 @@ def main(_):
 
     # Pre-shuffle the input to avoid having to make a very large shuffle
     # buffer in in the `input_fn`.
-    rng = random.Random(12345)
-    rng.shuffle(train_examples)
+    # ！！！！！暂时屏蔽掉，为了方便查看examples到features的对应关系！！！！！！
+    # rng = random.Random(12345)
+    # rng.shuffle(train_examples)
 
   model_fn = model_fn_builder(
       bert_config=bert_config,
@@ -1217,7 +1248,7 @@ def main(_):
 
     tf.logging.info("***** Running training *****")
     tf.logging.info("  Num orig examples = %d", len(train_examples)) # (q,p_c,a)
-    tf.logging.info("  Num split examples = %d", train_writer.num_features) # (q,p_c_span1,a) (q,p_c_span2,a) ...
+    tf.logging.info("  Num split examples(features) = %d", train_writer.num_features) # (q,p_c_span1,a) (q,p_c_span2,a) ...
     tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
     tf.logging.info("  Num steps = %d", num_train_steps)
     del train_examples
