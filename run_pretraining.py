@@ -362,6 +362,7 @@ def input_fn_builder(input_files,
     # For training, we want a lot of parallel reading and shuffling.
     # For eval, we want no shuffling and parallel reading doesn't matter.
     if is_training:
+      tf.logging.info(f'input_files---:{input_files}')
       tf.logging.info(f'tf.constant(input_files)---:{tf.constant(input_files)}')
       d = tf.data.Dataset.from_tensor_slices(tf.constant(input_files))  # ???
       d = d.repeat()
