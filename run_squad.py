@@ -236,22 +236,22 @@ def read_squad_examples(input_file, is_training):
     return False
 
   examples = []
-  for entry in input_data:
-    for paragraph in entry["paragraphs"]:
+  for entry in input_data:  ## 每篇文章
+    for paragraph in entry["paragraphs"]: ## 每篇文章的所有段落
       paragraph_text = paragraph["context"]
       doc_tokens = []
       char_to_word_offset = []
       prev_is_whitespace = True
-      for c in paragraph_text:
+      for c in paragraph_text: # 字符级的遍历
         if is_whitespace(c):
           prev_is_whitespace = True
         else:
           if prev_is_whitespace:
             doc_tokens.append(c)
           else:
-            doc_tokens[-1] += c
+            doc_tokens[-1] += c # 字符拼接
           prev_is_whitespace = False
-        char_to_word_offset.append(len(doc_tokens) - 1)
+        char_to_word_offset.append(len(doc_tokens) - 1)  # 记录每个字符索引对应的词的索引
 
       for qa in paragraph["qas"]:
         qas_id = qa["id"]
@@ -320,7 +320,7 @@ def read_squad_examples(input_file, is_training):
 
   return examples
 
-
+# 数据预处理
 def convert_examples_to_features(examples, tokenizer, max_seq_length,
                                  doc_stride, max_query_length, is_training,
                                  output_fn):
@@ -355,6 +355,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
         tok_end_position = orig_to_tok_index[example.end_position + 1] - 1
       else:
         tok_end_position = len(all_doc_tokens) - 1
+      # 上面给的答案的起始位置进一步微调，达到精确匹配
       (tok_start_position, tok_end_position) = _improve_answer_span(
           all_doc_tokens, tok_start_position, tok_end_position, tokenizer,
           example.orig_answer_text)
@@ -378,7 +379,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
         break
       start_offset += min(length, doc_stride)
 
-    # 分割后的文档span作为模型的features，先将部分features属性写入到tfrecord文件中，训练时再从文件中加载
+    # 分割后的文档span作为模型的features，先将部分features属性写入到tfrecord文件中，训练时再从文件中加载；预测时利用部分未写入到tfrecord文件的features属性辅助判断，最终将预测结果写入json文件中
     for (doc_span_index, doc_span) in enumerate(doc_spans):
       tokens = []
       token_to_orig_map = {}
@@ -779,7 +780,7 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
 
   example_index_to_features = collections.defaultdict(list)
   for feature in all_features:
-    example_index_to_features[feature.example_index].append(feature)
+    example_index_to_features[feature.example_index].append(feature) # 当样本长度超过max_seq_length时,一个样本可能会对应多个特征
 
   unique_id_to_result = {}
   for result in all_results:
@@ -794,7 +795,7 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
   scores_diff_json = collections.OrderedDict()
 
   for (example_index, example) in enumerate(all_examples):
-    features = example_index_to_features[example_index]
+    features = example_index_to_features[example_index]  # list
 
     prelim_predictions = []
     # keep track of the minimum score of null start+end of position 0
@@ -804,8 +805,8 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
     null_end_logit = 0  # the end logit at the slice with min null score
     for (feature_index, feature) in enumerate(features):
       result = unique_id_to_result[feature.unique_id]
-      start_indexes = _get_best_indexes(result.start_logits, n_best_size)
-      end_indexes = _get_best_indexes(result.end_logits, n_best_size)
+      start_indexes = _get_best_indexes(result.start_logits, n_best_size)  # list
+      end_indexes = _get_best_indexes(result.end_logits, n_best_size)  # list
       # if we could have irrelevant answers, get the min score of irrelevant
       if FLAGS.version_2_with_negative:
         feature_null_score = result.start_logits[0] + result.end_logits[0]

@@ -143,7 +143,7 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     writers[writer_index].write(tf_example.SerializeToString())
     writer_index = (writer_index + 1) % len(writers)
 
-    total_written += 1
+    total_written += 1 # 记录的样本数
 
     if inst_index < 20:
       tf.logging.info("*** Example ***")
@@ -246,13 +246,13 @@ def create_instances_from_document(
   # segments "A" and "B" based on the actual "sentences" provided by the user
   # input.
   instances = []
-  current_chunk = []
+  current_chunk = []  # 存储句子数
   current_length = 0
   i = 0
-  while i < len(document):
+  while i < len(document): # 句子数
     segment = document[i]
     current_chunk.append(segment)
-    current_length += len(segment)
+    current_length += len(segment) # 某个句子的wordpiece级别的token数
     if i == len(document) - 1 or current_length >= target_seq_length:
       if current_chunk:
         # `a_end` is how many segments from `current_chunk` go into the `A`

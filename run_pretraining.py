@@ -169,6 +169,8 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
       init_string = ""
       if var.name in initialized_variable_names:
         init_string = ", *INIT_FROM_CKPT*"
+      else:
+        init_string = ", *INIT_FROM_GRAPH*"
       tf.logging.info("  name = %s, shape = %s%s", var.name, var.shape,
                       init_string)
 
@@ -240,7 +242,8 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
                          label_ids, label_weights):
   """Get loss and log probs for the masked LM."""
-  input_tensor = gather_indexes(input_tensor, positions)
+  tf.logging.info(f'get_masked_lm_output--positions:{positions}')
+  input_tensor = gather_indexes(input_tensor, positions) # [flat_positions, width]
 
   with tf.variable_scope("cls/predictions"):
     # We apply one more non-linear transformation before the output layer.
@@ -252,7 +255,7 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
           activation=modeling.get_activation(bert_config.hidden_act),
           kernel_initializer=modeling.create_initializer(
               bert_config.initializer_range))
-      input_tensor = modeling.layer_norm(input_tensor)
+      input_tensor = modeling.layer_norm(input_tensor)  # [flat_positions, hidden_size]
 
     # The output weights are the same as the input embeddings, but there is
     # an output-only bias for each token.
@@ -260,21 +263,21 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
         "output_bias",
         shape=[bert_config.vocab_size],
         initializer=tf.zeros_initializer())
-    logits = tf.matmul(input_tensor, output_weights, transpose_b=True)
+    logits = tf.matmul(input_tensor, output_weights, transpose_b=True)  # [flat_positions, vocab_size]
     logits = tf.nn.bias_add(logits, output_bias)
-    log_probs = tf.nn.log_softmax(logits, axis=-1)
+    log_probs = tf.nn.log_softmax(logits, axis=-1) # [flat_positions, vocab_size]
 
     label_ids = tf.reshape(label_ids, [-1])
-    label_weights = tf.reshape(label_weights, [-1])
+    label_weights = tf.reshape(label_weights, [-1]) # [flat_positions]
 
     one_hot_labels = tf.one_hot(
-        label_ids, depth=bert_config.vocab_size, dtype=tf.float32)
+        label_ids, depth=bert_config.vocab_size, dtype=tf.float32) # [flat_positions, vocab_size]
 
     # The `positions` tensor might be zero-padded (if the sequence is too
     # short to have the maximum number of predictions). The `label_weights`
     # tensor has a value of 1.0 for every real prediction and 0.0 for the
     # padding predictions.
-    per_example_loss = -tf.reduce_sum(log_probs * one_hot_labels, axis=[-1])
+    per_example_loss = -tf.reduce_sum(log_probs * one_hot_labels, axis=[-1])  # 交叉熵   [flat_positions]
     numerator = tf.reduce_sum(label_weights * per_example_loss)
     denominator = tf.reduce_sum(label_weights) + 1e-5
     loss = numerator / denominator
@@ -295,12 +298,12 @@ def get_next_sentence_output(bert_config, input_tensor, labels):
     output_bias = tf.get_variable(
         "output_bias", shape=[2], initializer=tf.zeros_initializer())
 
-    logits = tf.matmul(input_tensor, output_weights, transpose_b=True)
-    logits = tf.nn.bias_add(logits, output_bias)
-    log_probs = tf.nn.log_softmax(logits, axis=-1)
+    logits = tf.matmul(input_tensor, output_weights, transpose_b=True)  #  input_tensor->[batch_size, hidden_size]
+    logits = tf.nn.bias_add(logits, output_bias)  # [batch_size, 2]
+    log_probs = tf.nn.log_softmax(logits, axis=-1) # [batch_size, 2]
     labels = tf.reshape(labels, [-1])
-    one_hot_labels = tf.one_hot(labels, depth=2, dtype=tf.float32)
-    per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
+    one_hot_labels = tf.one_hot(labels, depth=2, dtype=tf.float32) # [batch_size, 2]
+    per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)  #  交叉熵  [batch_size]
     loss = tf.reduce_mean(per_example_loss)
     return (loss, per_example_loss, log_probs)
 
@@ -313,11 +316,18 @@ def gather_indexes(sequence_tensor, positions):
   width = sequence_shape[2]
 
   flat_offsets = tf.reshape(
-      tf.range(0, batch_size, dtype=tf.int32) * seq_length, [-1, 1])
-  flat_positions = tf.reshape(positions + flat_offsets, [-1])
+      tf.range(0, batch_size, dtype=tf.int32) * seq_length, [-1, 1])  # ????
+
+  tf.logging.info(f'gather_indexes--flat_offsets:{flat_offsets}')
+
+
+  flat_positions = tf.reshape(positions + flat_offsets, [-1])   # ????
+
+  tf.logging.info(f'gather_indexes--flat_positions:{flat_positions}')
+
   flat_sequence_tensor = tf.reshape(sequence_tensor,
                                     [batch_size * seq_length, width])
-  output_tensor = tf.gather(flat_sequence_tensor, flat_positions)
+  output_tensor = tf.gather(flat_sequence_tensor, flat_positions)  # [flat_positions, width]
   return output_tensor
 
 
