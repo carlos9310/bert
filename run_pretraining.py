@@ -376,6 +376,7 @@ def input_fn_builder(input_files,
       tf.logging.info(f'input_files---:{input_files}')
       tf.logging.info(f'tf.constant(input_files)---:{tf.constant(input_files)}')
       d = tf.data.Dataset.from_tensor_slices(tf.constant(input_files))  # ???
+      tf.logging.info(f'tf.data.Dataset.from_tensor_slices(tf.constant(input_files))---:{d}')
       d = d.repeat()
       d = d.shuffle(buffer_size=len(input_files))
 
