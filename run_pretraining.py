@@ -147,6 +147,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
     total_loss = masked_lm_loss + next_sentence_loss
 
+    # 模型中可训练的参数，在训练过程中通过优化器不断更新其值
     tvars = tf.trainable_variables()
 
     initialized_variable_names = {}
@@ -164,6 +165,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
       else:
         tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
 
+    # 打印模型中可训练的参数名及形状
     tf.logging.info("**** Trainable Variables ****")
     for var in tvars:
       init_string = ""
@@ -241,9 +243,15 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
 def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
                          label_ids, label_weights):
-  """Get loss and log probs for the masked LM."""
+  """Get loss and log probs for the masked LM.
+    input_tensor --> [batch_size, seq_length, hidden_size]
+    output_weights --> [vocab_size, embedding_size]
+    positions --> [batch_size, max_predictions_per_seq]
+    label_ids --> [batch_size, max_predictions_per_seq]
+    label_weights --> [batch_size, max_predictions_per_seq]
+  """
   tf.logging.info(f'get_masked_lm_output--positions:{positions}')
-  input_tensor = gather_indexes(input_tensor, positions) # [flat_positions, width]
+  input_tensor = gather_indexes(input_tensor, positions) # [batch_size*max_predictions_per_seq, hidden_size]
 
   with tf.variable_scope("cls/predictions"):
     # We apply one more non-linear transformation before the output layer.
@@ -255,7 +263,7 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
           activation=modeling.get_activation(bert_config.hidden_act),
           kernel_initializer=modeling.create_initializer(
               bert_config.initializer_range))
-      input_tensor = modeling.layer_norm(input_tensor)  # [flat_positions, hidden_size]
+      input_tensor = modeling.layer_norm(input_tensor)  # [batch_size*max_predictions_per_seq, hidden_size]
 
     # The output weights are the same as the input embeddings, but there is
     # an output-only bias for each token.
@@ -263,15 +271,15 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
         "output_bias",
         shape=[bert_config.vocab_size],
         initializer=tf.zeros_initializer())
-    logits = tf.matmul(input_tensor, output_weights, transpose_b=True)  # [flat_positions, vocab_size]
+    logits = tf.matmul(input_tensor, output_weights, transpose_b=True)  # [batch_size*max_predictions_per_seq, vocab_size]
     logits = tf.nn.bias_add(logits, output_bias)
-    log_probs = tf.nn.log_softmax(logits, axis=-1) # [flat_positions, vocab_size]
+    log_probs = tf.nn.log_softmax(logits, axis=-1) # [batch_size*max_predictions_per_seq, vocab_size]
 
     label_ids = tf.reshape(label_ids, [-1])
-    label_weights = tf.reshape(label_weights, [-1]) # [flat_positions]
+    label_weights = tf.reshape(label_weights, [-1]) # [batch_size*max_predictions_per_seq]
 
     one_hot_labels = tf.one_hot(
-        label_ids, depth=bert_config.vocab_size, dtype=tf.float32) # [flat_positions, vocab_size]
+        label_ids, depth=bert_config.vocab_size, dtype=tf.float32) # [batch_size*max_predictions_per_seq, vocab_size]
 
     # The `positions` tensor might be zero-padded (if the sequence is too
     # short to have the maximum number of predictions). The `label_weights`
@@ -286,7 +294,10 @@ def get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
 
 
 def get_next_sentence_output(bert_config, input_tensor, labels):
-  """Get loss and log probs for the next sentence prediction."""
+  """Get loss and log probs for the next sentence prediction.
+    input_tensor: [batch_size, hidden_size]
+    labels: [batch_size, 1]
+  """
 
   # Simple binary classification. Note that 0 is "next sentence" and 1 is
   # "random sentence". This weight matrix is not used after pre-training.
@@ -298,7 +309,7 @@ def get_next_sentence_output(bert_config, input_tensor, labels):
     output_bias = tf.get_variable(
         "output_bias", shape=[2], initializer=tf.zeros_initializer())
 
-    logits = tf.matmul(input_tensor, output_weights, transpose_b=True)  #  input_tensor->[batch_size, hidden_size]
+    logits = tf.matmul(input_tensor, output_weights, transpose_b=True)  # [batch_size, 2]
     logits = tf.nn.bias_add(logits, output_bias)  # [batch_size, 2]
     log_probs = tf.nn.log_softmax(logits, axis=-1) # [batch_size, 2]
     labels = tf.reshape(labels, [-1])
@@ -316,18 +327,18 @@ def gather_indexes(sequence_tensor, positions):
   width = sequence_shape[2]
 
   flat_offsets = tf.reshape(
-      tf.range(0, batch_size, dtype=tf.int32) * seq_length, [-1, 1])  # ????
+      tf.range(0, batch_size, dtype=tf.int32) * seq_length, [-1, 1])  # [batch_size,1] * 是元素相乘
 
   tf.logging.info(f'gather_indexes--flat_offsets:{flat_offsets}')
 
 
-  flat_positions = tf.reshape(positions + flat_offsets, [-1])   # ????
+  flat_positions = tf.reshape(positions + flat_offsets, [-1])   # positions --> [batch_size, max_predictions_per_seq]
 
-  tf.logging.info(f'gather_indexes--flat_positions:{flat_positions}')
+  tf.logging.info(f'gather_indexes--flat_positions:{flat_positions}')  # [batch_size*max_predictions_per_seq]
 
   flat_sequence_tensor = tf.reshape(sequence_tensor,
                                     [batch_size * seq_length, width])
-  output_tensor = tf.gather(flat_sequence_tensor, flat_positions)  # [flat_positions, width]
+  output_tensor = tf.gather(flat_sequence_tensor, flat_positions)  # [batch_size*max_predictions_per_seq, width]
   return output_tensor
 
 

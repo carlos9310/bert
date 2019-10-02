@@ -28,7 +28,14 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
 
   learning_rate = tf.constant(value=init_lr, shape=[], dtype=tf.float32)
 
-  # Implements linear decay of the learning rate.
+  # Implements linear decay of the learning rate. 计算公式如下
+
+  '''
+  global_step = min(global_step, decay_steps)
+  decayed_learning_rate = (learning_rate - end_learning_rate) *
+                          (1 - global_step / decay_steps) ^ (power) +
+                          end_learning_rate
+  '''
   learning_rate = tf.train.polynomial_decay(
       learning_rate,
       global_step,
@@ -108,7 +115,7 @@ class AdamWeightDecayOptimizer(tf.train.Optimizer):
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """See base class."""
     assignments = []
-    for (grad, param) in grads_and_vars:
+    for (grad, param) in grads_and_vars:  # param：待更新参数
       if grad is None or param is None:
         continue
 
@@ -127,20 +134,20 @@ class AdamWeightDecayOptimizer(tf.train.Optimizer):
           trainable=False,
           initializer=tf.zeros_initializer())
 
-      # Standard Adam update.
+      # Standard Adam update. 是梯度下降法的一种变种，可对比理解三个要素：  待更新参数、学习率、参数更新方向
       next_m = (
           tf.multiply(self.beta_1, m) + tf.multiply(1.0 - self.beta_1, grad))
       next_v = (
           tf.multiply(self.beta_2, v) + tf.multiply(1.0 - self.beta_2,
                                                     tf.square(grad)))
-
+      # 参数更新方向
       update = next_m / (tf.sqrt(next_v) + self.epsilon)
 
       # Just adding the square of the weights to the loss function is *not*
       # the correct way of using L2 regularization/weight decay with Adam,
       # since that will interact with the m and v parameters in strange ways.
       #
-      # Instead we want ot decay the weights in a manner that doesn't interact
+      # Instead we want to decay the weights in a manner that doesn't interact
       # with the m/v parameters. This is equivalent to adding the square
       # of the weights to the loss with plain (non-momentum) SGD.
       if self._do_use_weight_decay(param_name):
